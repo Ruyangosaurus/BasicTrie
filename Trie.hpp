@@ -115,7 +115,7 @@ public:
         Node* parent = &m_root, * cursor;           // starting recursion with the root
         for (auto i = key.cbegin(); i != key.cend(); ++i){
             auto insertee = std::basic_string<CharT>(1,*i);
-            if (parent->m_kid == nullptr){         // if current has no children, build downwards
+            if (parent->m_kid == nullptr){          // if current has no children, build downwards
                 cursor = new Node (insertee);
                 cursor->m_parent = parent;
                 parent->m_kid = cursor;
@@ -192,13 +192,13 @@ public:
     }
     /* Clear - frees all the stored memory */
     void clear() {
-        Node* cursor = &m_root; // initialize recursion with root
+        Node* cursor = &m_root; // initialize pseudo-recursion with root
         while(true){
             if(cursor->m_kid != nullptr){ // if we can go down, we'll go down
                 cursor = cursor->m_kid;
             }
             else{
-                if (cursor == &m_root){    // if all left to delete is the root, delete it
+                if (cursor == &m_root){    // if all left is the root, stop
                     break;
                 }
                 else{                     // otherwise, delete cursor and go up
