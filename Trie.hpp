@@ -7,43 +7,68 @@
 
 /// @tparam CharT - the strings' character type; in Trie, char.
 /// @brief BasicTrie - a Trie implementation that allows insertion, search and deletion in O(str.size())
-template<class CharT>
+template<class CharT, class Val = std::basic_string<CharT>>
 class BasicTrie{
+public:
+    using key_type = std::basic_string<CharT>;
+    using mapped_type = Val;
+    using value_type = std::pair<key_type, mapped_type>;
+private:
     struct Node{
         Node* m_parent, * m_next, * m_kid;
-        std::basic_string<CharT> m_key;
-
-        Node (const std::basic_string<CharT>& data) : m_parent(nullptr), m_next(nullptr),
-                                                         m_kid(nullptr), m_key(data){}
-        Node (std::basic_string<CharT>&& data) : m_parent(nullptr), m_next(nullptr),
-                                                         m_kid(nullptr), m_key(std::move(data)){}
-        Node (const Node& other) : m_parent(nullptr), m_next(nullptr),                             // copies a node
-                                                         m_kid(nullptr), m_key(other.data){} 
-        Node (Node&& other) : m_parent(nullptr), m_next(nullptr),                                  // moves responsibility over another node's data and subnodes
-                                                         m_kid(std::move(other.m_kid)), m_key(std::move(other.data)){}
+        
+        Node () : m_parent(nullptr), m_next(nullptr),                             // copies a node
+                                                         m_kid(nullptr){} 
+        Node (Node&& other) : m_parent(nullptr), m_next(nullptr),                                  // moves responsibility over another node's subnodes
+                                                         m_kid(std::move(other.m_kid)){}
+        virtual ~Node(){}
+        virtual const key_type& get_key() const =0;
+        virtual Node* clone () const =0;
     };
 
-    Node m_root;
+    struct KeyNode : public Node{
+        key_type m_key;
+
+        KeyNode (const key_type& data) : Node(), m_key(data){}
+        KeyNode (key_type&& data) : Node(), m_key(std::move(data)){}
+        KeyNode (const KeyNode& other) : Node(), m_key(other.m_key){} 
+        KeyNode (KeyNode&& other) : Node(std::move(other)), m_key(std::move(other.m_key)){}
+        const key_type& get_key() const override {return m_key;}
+        Node* clone () const override {return new KeyNode(*this);}
+    };
+
+    struct ValueNode : public Node{
+        value_type m_data;
+
+        ValueNode (const key_type& data, const mapped_type& val) : Node(), m_data(data, val){}
+        ValueNode (key_type&& data, mapped_type&& val) : Node(), m_data(std::move(data), std::move(val)){}
+        ValueNode (const ValueNode& other) : Node(), m_data(other.m_data){} 
+        ValueNode (ValueNode&& other) : Node(std::move(other)), m_data(std::move(other.m_data)){}
+        const key_type& get_key() const override {return m_data.first;}
+        Node* clone () const override {return new ValueNode(*this);}
+    };
+
+    KeyNode m_root;
 
     /* AuxSearch - used by find, contains and erase */
-    Node* aux_search(const std::basic_string<CharT>& key) const{
+    Node* aux_search(const key_type& key) const{
         Node* cursor = m_root.m_kid;
         if (cursor == nullptr){
             return cursor;
         }
         for (auto i = key.cbegin(); i != key.cend(); ++i){
-            auto insertee = std::basic_string<CharT>(1,*i);
-            while (cursor != nullptr && cursor->m_key < insertee){
+            auto insertee = key_type(1,*i);
+            while (cursor != nullptr && cursor->get_key() < insertee){
                 cursor = cursor->m_next;
             }
-            if (cursor != nullptr && cursor->m_key == insertee){
+            if (cursor != nullptr && cursor->get_key() == insertee){
                 cursor = cursor->m_kid;
             }
             else{
                 return nullptr;
             }
         }
-        while (cursor != nullptr && cursor->m_key != std::basic_string<CharT>()){
+        while (cursor != nullptr && cursor->get_key() != key_type()){
             cursor = cursor->m_next;
         }
         if (cursor == nullptr){
@@ -58,14 +83,14 @@ class BasicTrie{
         bool from_subnode = false;
         while (other_cursor != nullptr){
             if (other_cursor->m_kid != nullptr && !from_subnode){ // if we can go downwards and we hadn't already been there
-                auto temp = new Node (other_cursor->m_kid->m_key);
+                Node* temp = other_cursor->m_kid->clone();
                 cursor->m_kid = temp;
                 temp->m_parent = cursor;
                 other_cursor = other_cursor->m_kid;
                 cursor = cursor->m_kid;
             }
             else if (other_cursor->m_next != nullptr){ // if we can go sidewards
-                auto temp = new Node (other_cursor->m_next->m_key);
+                Node* temp = other_cursor->m_next->clone();
                 cursor->m_next = temp;
                 temp->m_parent = cursor->m_parent;
                 other_cursor = other_cursor->m_next;
@@ -81,9 +106,9 @@ class BasicTrie{
     }
 public:
     /* Default constructor - constructs a new Trie */
-    BasicTrie() : m_root(std::basic_string<CharT>()) {}
+    BasicTrie() : m_root(key_type()) {}
     /* Copy constructor - copies a Trie */
-    BasicTrie(const BasicTrie& other) : m_root(std::basic_string<CharT>()) {
+    BasicTrie(const BasicTrie& other) : m_root(key_type()) {
         aux_clone (other);
     }
     /* Copy assignment - copies a Trie */
@@ -108,32 +133,32 @@ public:
         clear();
     }
     /* Insert - allows insertion of pairs of strings */
-    bool insert(const std::basic_string<CharT>& key, const std::basic_string<CharT>& data) {
-        if (key == std::basic_string<CharT>()){
+    bool insert(const key_type& key, const mapped_type& data) {
+        if (key == key_type()){
             return false;
         }
         Node* parent = &m_root, * cursor;           // starting recursion with the root
         for (auto i = key.cbegin(); i != key.cend(); ++i){
-            auto insertee = std::basic_string<CharT>(1,*i);
-            if (parent->m_kid == nullptr){          // if current has no children, build downwards
-                cursor = new Node (insertee);
+            auto insertee = key_type(1,*i);
+            if (parent->m_kid == nullptr){         // if current has no children, build downwards
+                cursor = new KeyNode (insertee);
                 cursor->m_parent = parent;
                 parent->m_kid = cursor;
                 parent = cursor;
             }
             else{                                  // else, search where in its children list we should go down
                 auto temp = parent->m_kid, temp_2 = temp;
-                while (temp != nullptr && temp->m_key < insertee){
+                while (temp != nullptr && temp->get_key() < insertee){
                     temp_2 = temp;
                     temp = temp->m_next;
                 }
-                if (temp != nullptr && temp->m_key == insertee){
+                if (temp != nullptr && temp->get_key() == insertee){
                     parent = temp;
                 }
                 else{
-                    cursor = new Node (insertee);
+                    cursor = new KeyNode (insertee);
                     cursor->m_parent = parent;
-                    if (temp == parent->m_kid && temp->m_key > insertee){
+                    if (temp == parent->m_kid && temp->get_key() > insertee){
                         cursor->m_next = temp;
                         parent->m_kid = cursor;
                     }
@@ -145,30 +170,30 @@ public:
                 }
             }
         }
-        cursor = new Node (std::basic_string<CharT>());                   // add the data enqueuement at the end
+        cursor = new KeyNode (key_type());                   // add the data enqueuement at the end
         parent->m_kid = cursor;
         cursor->m_parent = parent;
         parent = cursor;
-        cursor = new Node (data);                   // add the data enqueuement at the end
+        cursor = new ValueNode ({key, data});                   // add the data enqueuement at the end
         parent->m_kid = cursor;
         cursor->m_parent = parent;
         return true;
     }
     /* Find - allows search of strings in trie by their associated key
       throws std::out_of_range when the key isn't found in the trie */
-    std::basic_string<CharT>& find (const std::basic_string<CharT>& key) const{
-        Node* cursor = aux_search(key);
+    value_type& find (const key_type& key) const{
+        ValueNode* cursor = reinterpret_cast<ValueNode*> (aux_search(key));
         if (!cursor){
             throw std::out_of_range ("Trie does not contain such a key: " + key);
         }
-        return cursor->m_key;
+        return cursor->m_data;
     }
     /* Contains - allows checking if an item exists in the trie */
-    bool contains (const std::basic_string<CharT>& key) const{
+    bool contains (const key_type& key) const{
         return (aux_search(key) != nullptr);
     }
     /* Erase - allows deletion of strings from the Trie by their keys */
-    bool erase(const std::basic_string<CharT>& key) {
+    bool erase(const key_type& key) {
         Node* cursor = aux_search(key);
         if (!cursor){
             return false;
@@ -192,7 +217,7 @@ public:
     }
     /* Clear - frees all the stored memory */
     void clear() {
-        Node* cursor = &m_root; // initialize pseudo-recursion with root
+        Node* cursor = &m_root; // initialize recursion with root
         while(true){
             if(cursor->m_kid != nullptr){ // if we can go down, we'll go down
                 cursor = cursor->m_kid;
@@ -212,9 +237,16 @@ public:
     }
 };
 
-using Trie = BasicTrie<char>;
-using wTrie = BasicTrie<wchar_t>;
-using u16Trie = BasicTrie<char16_t>;
-using u32Trie = BasicTrie<char32_t>;
+template<class Val = std::string>
+using Trie = BasicTrie<char, Val>;
+
+template<class Val = std::wstring>
+using wTrie = BasicTrie<wchar_t, Val>;
+
+template<class Val = std::u16string>
+using u16Trie = BasicTrie<char16_t, Val>;
+
+template<class Val = std::u32string>
+using u32Trie = BasicTrie<char32_t, Val>;
 
 #endif // BASIC_TRIE_DEFINED
