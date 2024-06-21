@@ -1,6 +1,6 @@
 An implementation of a search Trie in c++.
 
-Current interface (as of 21.6.2024, 0:25):
+Current interface (as of 21.6.2024, 19:46):
 ```txt
 BasicTrie
 |
