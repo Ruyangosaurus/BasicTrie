@@ -3,6 +3,7 @@
 #include <string>
 #include <exception>
 #include <stdexcept>
+#include <iterator>
 
 
 /// @tparam CharT - the strings' character type; in Trie, char.
@@ -104,7 +105,9 @@ private:
             }
         }
     }
+
 public:
+//  ctors, dtor, =tors
     /* Default constructor - constructs a new Trie */
     BasicTrie() : m_root(key_type()) {}
     /* Copy constructor - copies a Trie */
@@ -132,10 +135,83 @@ public:
     ~BasicTrie(){
         clear();
     }
+
+//  iterators
+
+    struct Iterator{
+        using iterator_category = std::forward_iterator_tag;
+        using difference_type   = std::ptrdiff_t;
+        using value_type        = BasicTrie::value_type;
+        using pointer           = value_type*; 
+        using reference         = value_type&; 
+
+        // ctors
+        Iterator() : m_ptr(nullptr) {}
+        Iterator(const Iterator& itr) : m_ptr(itr.m_ptr) {}
+        Iterator(Iterator&& itr) : m_ptr(std::move(itr.m_ptr)) {}
+        // =tors
+        Iterator& operator=(const Iterator& itr) {m_ptr = itr.m_ptr;}
+        Iterator& operator=(Iterator&& itr) {m_ptr = std::move(itr.m_ptr);}
+        // dtor
+        ~Iterator() = default;
+        // swap
+        void swap (Iterator& itr){
+            auto temp = m_ptr;
+            m_ptr = itr.m_ptr;
+            itr.m_ptr = temp;
+        }
+        // dereferencing
+        reference operator* () {return m_ptr->m_data;}
+        pointer operator-> () {return &m_ptr->m_data;}
+        // increment
+        Iterator& operator++(){
+            Node* cursor = reinterpret_cast<Node*> (m_ptr);
+            while (cursor != nullptr && cursor->m_next == nullptr){
+                cursor = cursor->m_parent;
+            }
+            if (cursor == nullptr){
+                m_ptr = nullptr;
+            }
+            else{
+                cursor = cursor->m_next;
+                while (cursor->get_key() != key_type()){
+                    cursor = cursor->m_kid;
+                }
+                m_ptr = reinterpret_cast<ValueNode*> (cursor->m_kid);
+            }
+            return *this;
+        }
+        Iterator operator++(int) { Iterator temp = *this; ++(*this); return temp; }
+    private:
+        ValueNode* m_ptr;
+
+        Iterator(ValueNode* ptr) : m_ptr(ptr) {} // only to be used by BasicTrie
+        // comparison
+        friend bool operator==(const Iterator& one, const Iterator& other){
+            return one.m_ptr == other.m_ptr;
+        }
+        friend bool operator!=(const Iterator& one, const Iterator& other){
+            return one.m_ptr != other.m_ptr;
+        }
+        friend class BasicTrie;
+    };
+
+    Iterator begin(){
+        Node* ptr = m_root.m_kid;
+        while (ptr != nullptr && ptr->m_kid != nullptr){
+            ptr = ptr->m_kid;
+        }
+        return Iterator (reinterpret_cast<ValueNode*> (ptr));
+    }
+    Iterator end(){
+        return Iterator();
+    }
+
+//  insertion 
     /* Insert - allows insertion of pairs of strings */
-    bool insert(const key_type& key, const mapped_type& data) {
+    std::pair<bool, Iterator> insert(const key_type& key, const mapped_type& data) {
         if (key == key_type()){
-            return false;
+            return {false, end()};
         }
         Node* parent = &m_root, * cursor;           // starting recursion with the root
         for (auto i = key.cbegin(); i != key.cend(); ++i){
@@ -170,28 +246,42 @@ public:
                 }
             }
         }
-        cursor = new KeyNode (key_type());                   // add the data enqueuement at the end
-        parent->m_kid = cursor;
-        cursor->m_parent = parent;
-        parent = cursor;
+        if (parent->m_kid == nullptr){
+            cursor = new KeyNode (key_type());                   // add the data enqueuement at the end
+            parent->m_kid = cursor;
+            cursor->m_parent = parent;
+            parent = cursor;
+        }
+        else{
+            if (parent->m_kid->get_key() != key_type()){
+                cursor = new KeyNode (key_type());
+                auto temp = parent->m_kid;
+                parent->m_kid = cursor;
+                cursor->m_parent = parent;
+                cursor->m_next = temp;
+                parent = cursor;
+            }
+            else{
+                return {false, Iterator(reinterpret_cast<ValueNode*>(parent->m_kid->m_kid))};
+            }
+        }
         cursor = new ValueNode ({key, data});                   // add the data enqueuement at the end
         parent->m_kid = cursor;
         cursor->m_parent = parent;
-        return true;
+        return {true, Iterator(reinterpret_cast<ValueNode*>(cursor))};
     }
-    /* Find - allows search of strings in trie by their associated key
-      throws std::out_of_range when the key isn't found in the trie */
-    value_type& find (const key_type& key) const{
-        ValueNode* cursor = reinterpret_cast<ValueNode*> (aux_search(key));
-        if (!cursor){
-            throw std::out_of_range ("Trie does not contain such a key: " + key);
-        }
-        return cursor->m_data;
+
+//  lookup
+    /* Find - allows search of strings in trie by their associated key */
+    Iterator find (const key_type& key) const{
+        return Iterator (reinterpret_cast<ValueNode*> (aux_search(key)));
     }
     /* Contains - allows checking if an item exists in the trie */
     bool contains (const key_type& key) const{
         return (aux_search(key) != nullptr);
     }
+
+//  deletion
     /* Erase - allows deletion of strings from the Trie by their keys */
     bool erase(const key_type& key) {
         Node* cursor = aux_search(key);
@@ -237,16 +327,16 @@ public:
     }
 };
 
-template<class Val = std::string>
+template<class Val>
 using Trie = BasicTrie<char, Val>;
 
-template<class Val = std::wstring>
+template<class Val>
 using wTrie = BasicTrie<wchar_t, Val>;
 
-template<class Val = std::u16string>
+template<class Val>
 using u16Trie = BasicTrie<char16_t, Val>;
 
-template<class Val = std::u32string>
+template<class Val>
 using u32Trie = BasicTrie<char32_t, Val>;
 
 #endif // BASIC_TRIE_DEFINED
